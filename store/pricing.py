@@ -1,17 +1,20 @@
+from typing import Optional
 from store.models import Order
+from store.interfaces import IDiscountCalculator
+from store.pricing_rules.rules import VIPDiscountRule, BulkDiscountRule, CouponDiscountRule
+from store.pricing_rules.calculator import DiscountCalculator as DefaultDiscountCalculator
 
 
-class DiscountCalculator:
+class DiscountCalculator(IDiscountCalculator):
+    def __init__(self, calculator: Optional[DefaultDiscountCalculator] = None):
+        self._calculator = calculator or DefaultDiscountCalculator([
+            VIPDiscountRule(),
+            BulkDiscountRule(),
+            CouponDiscountRule(),
+        ])
+
     def calculate(self, order: Order) -> float:
-        subtotal = order.subtotal
+        return self._calculator.calculate(order)
 
-        if order.customer.is_vip:
-            discount = subtotal * 0.20
-        elif order.item_count >= 10:
-            discount = subtotal * 0.10
-        elif "WELCOME10" in order.coupons:
-            discount = subtotal * 0.10
-        else:
-            discount = 0.0
-
-        return round(discount, 2)
+    def add_rule(self, rule) -> None:
+        self._calculator.add_rule(rule)
