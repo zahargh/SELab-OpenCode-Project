@@ -1,17 +1,23 @@
-class NotificationService:
+from store.interfaces import INotificationService
+from store.notifiers import EmailNotifier, SmsNotifier, PushNotifier, CompositeNotifier
+
+
+class NotificationService(INotificationService):
+    def __init__(self):
+        self._notifier = CompositeNotifier(
+            email_notifier=EmailNotifier(),
+            sms_notifier=SmsNotifier(),
+        )
+
+    def notify(self, customer, message: str) -> None:
+        self._notifier.notify(customer, message)
+
+    # Backward compatibility
     def send_email(self, customer, message: str) -> None:
-        print(f"[email] to {customer.email}: {message}")
+        EmailNotifier().send_email(customer, message)
 
     def send_sms(self, customer, message: str) -> None:
-        print(f"[sms] to {customer.phone}: {message}")
+        SmsNotifier().send_sms(customer, message)
 
     def send_push(self, customer, message: str) -> None:
-        print(f"[push] to {customer.name}: {message}")
-
-
-class SmsOnlyNotifier(NotificationService):
-    def send_email(self, customer, message: str) -> None:
-        raise NotImplementedError("An SMS notifier cannot send email")
-
-    def send_push(self, customer, message: str) -> None:
-        raise NotImplementedError("An SMS notifier cannot send push")
+        PushNotifier().send_push(customer, message)
