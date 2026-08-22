@@ -160,3 +160,39 @@ Skill با موفقیت تمام ۵ نقض شناسایی‌شده در گام �
 در خروجی، عبارت ویتنامی «trách nhiệm» به‌جای کلمه‌ی «مسئولیت» درج شده بود —
 نمونه‌ای از خطای زبانی مدل رایگان (Nemotron 3 Ultra Free) که نیاز به بازبینی
 انسانی داشت.
+
+
+## گام ۴: تولید برنامه‌ی اصلاح (Plan Mode)
+
+با استفاده از حالت Plan در OpenCode (به همراه Skill `solid-checker`)، یک
+برنامه‌ی کامل Refactoring برای اصلاح هر ۵ نقض شناسایی‌شده در گام ۲ تولید شد.
+
+### مشکلی که در Plan اولیه پیدا و اصلاح شد
+Plan اولیه‌ی پیشنهادی یک خطای فنی داشت: برای هر ماژول (payment, pricing,
+notification, storage) هم‌زمان یک فایل facade (مثلاً `payment.py`) و یک
+پوشه با همان نام (`payment/`) پیشنهاد داده بود. در سیستم فایل نمی‌توان
+هم‌زمان یک فایل و یک پوشه با نام یکسان در یک مسیر داشت. این تناقض قبل از
+اجرا شناسایی و به Agent بازخورد داده شد؛ Plan اصلاح‌شده پوشه‌های جدید را
+با نام‌های غیرمتداخل (`payment_strategies/`, `pricing_rules/`,
+`notifiers/`, `repositories/`) بازسازی کرد.
+
+### ساختار نهایی برنامه (پس از اصلاح)
+
+| مرحله | عمل | مسیرها | اصل مرتبط |
+|---|---|---|---|
+| ۱ | ایجاد لایه‌ی انتزاعی | `store/interfaces.py` | پیش‌نیاز DIP و ISP |
+| ۲ | Refactor پرداخت (Strategy Pattern) | `store/payment_strategies/` + `store/payment.py` (facade) | OCP |
+| ۳ | Refactor تخفیف (Strategy Pattern) | `store/pricing_rules/` + `store/pricing.py` (facade) | OCP |
+| ۴ | تفکیک اعلان‌رسانی | `store/notifiers/` + `store/notification.py` (facade) | LSP, ISP |
+| ۵ | تفکیک ذخیره‌سازی | `store/repositories/` + `store/storage.py` (facade) | DIP |
+| ۶ | تفکیک OrderService | `store/services/` (جایگزین `order_service.py`) | SRP |
+| ۷ | Dependency Injection نهایی | `store/container.py` + `store/main.py` | Wire-up کلی |
+
+### راهبرد کلی
+تمام فایل‌های facade موجود (`payment.py`, `pricing.py`, `notification.py`,
+`storage.py`) حفظ می‌شوند تا سازگاری با `main.py` قدیمی حفظ شود، اما بدنه‌ی
+داخلی آن‌ها به پیاده‌سازی‌های جدید (Strategy/Repository) اشاره می‌کند.
+
+### تصمیم تیم
+این برنامه پس از بررسی، تایید شد و اجرای آن (حالت Build) در گام ۵ آغاز
+می‌شود.
