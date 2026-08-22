@@ -1,11 +1,12 @@
+from typing import Optional
 from store.models import Order
 from store.interfaces import IOrderRepository
 from store.repositories import MySqlRepository
 
 
 class MySqlDatabase(IOrderRepository):
-    def __init__(self, connection_string: str = "mysql://localhost/store"):
-        self._repository = MySqlRepository(connection_string)
+    def __init__(self, repository: Optional[MySqlRepository] = None, connection_string: str = "mysql://localhost/store"):
+        self._repository = repository or MySqlRepository(connection_string)
 
     def save_order(self, order) -> None:
         self._repository.save(order)

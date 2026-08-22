@@ -1,10 +1,11 @@
+from typing import Optional
 from store.interfaces import INotificationService
 from store.notifiers import EmailNotifier, SmsNotifier, PushNotifier, CompositeNotifier
 
 
 class NotificationService(INotificationService):
-    def __init__(self):
-        self._notifier = CompositeNotifier(
+    def __init__(self, notifier: Optional[CompositeNotifier] = None):
+        self._notifier = notifier or CompositeNotifier(
             email_notifier=EmailNotifier(),
             sms_notifier=SmsNotifier(),
         )

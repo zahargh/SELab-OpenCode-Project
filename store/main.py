@@ -1,5 +1,5 @@
 from store.models import BundleOrder, Customer, Order, OrderItem
-from store.order_service import OrderService
+from store.container import Container
 
 
 def build_demo_orders():
@@ -34,7 +34,8 @@ def build_demo_orders():
 
 
 def main() -> None:
-    service = OrderService()
+    container = Container()
+    service = container.orchestrator
     laptop, books, bundle, cash_order = build_demo_orders()
 
     print(">>> Checkout a simple order")
