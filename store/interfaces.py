@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from store.models import Order, Customer
+from store.models import Order, Customer, PricingBreakdown
 
 
 # ============================================================
@@ -106,7 +106,7 @@ class IOrderValidator(ABC):
 
 class IPricingService(ABC):
     @abstractmethod
-    def calculate_total(self, order: Order) -> float:
+    def calculate_total(self, order: Order) -> PricingBreakdown:
         pass
 
 
@@ -130,8 +130,7 @@ class IOrderNotificationService(ABC):
 
 class IReceiptPrinter(ABC):
     @abstractmethod
-    def print_receipt(self, order: Order, subtotal: float, discount: float,
-                      shipping: float, total: float, receipt: str) -> None:
+    def print_receipt(self, order: Order, breakdown: PricingBreakdown, receipt: str) -> None:
         pass
 
 

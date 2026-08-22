@@ -48,3 +48,11 @@ class BundleOrder(Order):
     def __init__(self, id: int, customer: Customer, orders: List[Order]):
         super().__init__(id=id, customer=customer, items=[])
         self.orders = orders
+
+
+@dataclass
+class PricingBreakdown:
+    subtotal: float
+    discount: float
+    shipping: float
+    total: float
