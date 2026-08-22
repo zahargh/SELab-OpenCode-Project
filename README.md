@@ -290,3 +290,24 @@ notification, storage) هم‌زمان یک فایل facade (مثلاً `payment
 
 توجه: `store/main.py` هنوز به `OrderService` قدیمی وابسته است و در
 مرحله‌ی ۷ (Dependency Injection Container) به‌روزرسانی خواهد شد.
+
+### مرحله ۷ از ۷: Dependency Injection Container و اتصال نهایی
+یک `Container` مرکزی در `store/container.py` ساخته شد که تمام سرویس‌ها و
+وابستگی‌هایشان را یک‌بار می‌سازد و به `OrderOrchestrator` تزریق می‌کند.
+`main.py` به‌روزرسانی شد تا از `Container().orchestrator` استفاده کند.
+فایل قدیمی `store/order_service.py` حذف شد.
+
+**مشکل شناسایی و اصلاح‌شده:** در پیش‌نویس اول `Container`، چندین وابستگی
+(`EmailNotifier`, `SmsNotifier`, `PushNotifier`, `CompositeNotifier`,
+`MySqlDatabase` مستقل) ساخته شده بودند که هیچ‌کدام واقعاً در
+`OrderOrchestrator` استفاده نمی‌شدند — کد مرده و گمراه‌کننده. این وابستگی‌ها
+حذف و به‌جایش یک instance مشترک از `CompositeNotifier` و `MySqlRepository`
+تزریق شد تا `notification_service` و `database` (که به‌عنوان property
+عمومی برای تست در دسترس‌اند) دقیقاً همان چیزی باشند که orchestrator هم
+استفاده می‌کند.
+
+### تست نهایی: تایید عدم تغییر رفتار
+اجرای `python -m store.main` روی نسخه‌ی کاملاً Refactor شده، خروجی‌ای
+دقیقاً یکسان با نسخه‌ی اصلی (`01-OOD-Principles-Without`) تولید کرد —
+شامل محاسبه‌ی تخفیف، shipping، و هر ۴ روش پرداخت (از جمله cash). این
+تایید می‌کند که Refactoring رفتار بیرونی برنامه را حفظ کرده است.
