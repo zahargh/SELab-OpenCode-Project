@@ -1,0 +1,313 @@
+# گزارش آزمایش ۲ — مروری بر اصول طراحی شی‌گرا
+
+## گام ۱: افزودن قابلیت جدید به نسخه اولیه (بدون اصلاح اصول SOLID)
+
+قابلیت «روش پرداخت نقدی (Cash Payment)» با استفاده از OpenCode (مدل Nemotron 3 Ultra Free)
+به نسخه اولیه پروژه اضافه شد. این نسخه در فولدر `01-OOD-Principles-Without` نگهداری می‌شود.
+
+### جدول تغییرات
+
+| ردیف | فایل/کلاس تغییر یافته | نوع تغییر | توضیح تغییر |
+|---|---|---|---|
+| ۱ | `store/payment.py` → `PaymentProcessor.process()` | افزودن شاخه `elif` جدید | برای پشتیبانی از روش پرداخت نقدی؛ چون منطق انتخاب روش پرداخت به‌صورت زنجیره if/elif پیاده شده، تنها راه افزودن روش جدید، افزودن یک شاخه‌ی دیگر به همین زنجیره است |
+| ۲ | `store/main.py` → `build_demo_orders()` | افزودن یک `Order` جدید (`cash_order`) | برای نمایش و تست عملی قابلیت جدید در سناریوی دمو |
+| ۳ | `store/main.py` → `main()` | تغییر خط unpacking + افزودن فراخوانی `process_order` | چون خروجی `build_demo_orders()` یک آیتم بیشتر شده، امضای تابع فراخوان هم باید هماهنگ شود |
+
+### چرا این تغییرات ضروری بودند؟
+
+از آنجا که `PaymentProcessor` به‌جای یک الگوی طراحی مثل Strategy، از یک زنجیره‌ی
+`if/elif` برای انتخاب روش پرداخت استفاده کرده، تنها راه افزودن روش جدید، تغییر
+مستقیم در بدنه‌ی همان کلاس بود. این کلاس هیچ نقطه‌ی توسعه‌ای (extension point)
+بدون تغییر کد موجود ندارد — دقیقاً نمونه‌ای از نقض اصل Open/Closed (OCP) که در
+گام ۲ به آن پرداخته می‌شود.
+
+### استفاده از OpenCode در این گام
+- **مدل مورد استفاده:** Nemotron 3 Ultra Free (رایگان)
+- **ابزار:** OpenCode، با دستور `/init` برای ساخت خودکار `AGENTS.md` و سپس حالت Build برای اعمال تغییرات
+- خروجی پیشنهادی Agent قبل از اعمال بررسی شد و با کد واقعی مطابقت داده شد؛ نیازی به اصلاح دستی نبود.
+
+## گام ۲: تحلیل اصول طراحی SOLID
+
+### SRP (Single Responsibility Principle)
+رعایت شده؟ خیر
+محل در پروژه: order_service.py → OrderService.process_order()
+توضیح: این متد به‌تنهایی ۶ مسئولیت مجزا دارد: اعتبارسنجی سفارش، محاسبه
+قیمت/تخفیف، پردازش پرداخت، ذخیره‌سازی در دیتابیس، اطلاع‌رسانی (ایمیل+پیامک)،
+و چاپ رسید. هر تغییر در هرکدام از این حوزه‌ها (مثلاً تغییر فرمت رسید) باعث
+تغییر همین کلاس می‌شود.
+
+علت نقض: ترکیب چند مسئولیت مستقل در یک متد واحد.
+روش اصلاح: استخراج هر مسئولیت به یک کلاس/سرویس جداگانه (مثلاً
+OrderValidator, ReceiptPrinter) و فراخوانی آن‌ها از OrderService که
+صرفاً نقش هماهنگ‌کننده (orchestrator) را ایفا کند.
+دلیل انتخاب: این کار باعث می‌شود تغییر در هر بخش (مثلاً فرمت رسید) بدون
+نیاز به لمس منطق پرداخت یا اعتبارسنجی ممکن شود و تست‌پذیری هر بخش بالا برود.
+
+---
+
+### OCP (Open/Closed Principle)
+رعایت شده؟ خیر
+محل در پروژه: payment.py → PaymentProcessor.process()
+توضیح: افزودن هر روش پرداخت جدید (مثل «cash» که در گام ۱ اضافه کردیم)
+نیازمند ویرایش مستقیم بدنه‌ی این کلاس است (افزودن شاخه‌ی elif جدید). کلاس در
+برابر توسعه باز نیست.
+
+علت نقض: استفاده از زنجیره‌ی if/elif به‌جای یک الگوی توسعه‌پذیر.
+روش اصلاح: استفاده از الگوی Strategy: تعریف یک اینترفیس/کلاس پایه‌ی
+انتزاعی (مثلاً PaymentMethod) با پیاده‌سازی جداگانه برای هر روش پرداخت
+(CreditCardPayment, PayPalPayment, CashPayment, ...).
+دلیل انتخاب: با این روش، افزودن روش پرداخت جدید فقط نیازمند افزودن یک
+کلاس جدید است، بدون تغییر در کد موجود PaymentProcessor.
+
+---
+
+### DIP (Dependency Inversion Principle)
+رعایت شده؟ خیر
+محل در پروژه: order_service.py → OrderService.__init__()
+توضیح: این کلاس مستقیماً وابسته به پیاده‌سازی‌های concrete است:
+DiscountCalculator(), PaymentProcessor(), NotificationService(),
+MySqlDatabase() — نه به یک abstraction. ماژول سطح بالا مستقیماً به جزئیات
+ماژول‌های سطح پایین وابسته است.
+
+علت نقض: نبود لایه‌ی انتزاعی (interface) بین OrderService و وابستگی‌هایش.
+روش اصلاح: تعریف اینترفیس‌هایی مثل IPaymentProcessor, IDatabase,
+INotificationService و تزریق وابستگی (Dependency Injection) از طریق
+constructor به‌جای ساختن مستقیم نمونه‌ها داخل OrderService.
+دلیل انتخاب: این کار امکان تعویض پیاده‌سازی‌ها (مثلاً تعویض MySQL با
+دیتابیس دیگر، یا mock کردن برای تست) را بدون تغییر در OrderService فراهم
+می‌کند.
+
+### LSP (Liskov Substitution Principle)
+**رعایت شده؟** خیر
+**محل در پروژه:** `notification.py` → `SmsOnlyNotifier(NotificationService)`
+**توضیح:** این زیرکلاس، متدهای `send_email` و `send_push` را با پرتاب
+`NotImplementedError` غیرفعال می‌کند. اگر کدی با تایپ `NotificationService`
+کار کند و این زیرکلاس را جایگزین آن کند، رفتار برنامه می‌شکند.
+
+**علت نقض:** زیرکلاس نمی‌تواند بدون تغییر رفتار قابل مشاهده، جایگزین کلاس
+پایه شود.
+**روش اصلاح:** به‌جای ارث‌بری از یک کلاس با متدهای اجباری‌شده، هر کانال
+اطلاع‌رسانی (Email, SMS, Push) را به‌صورت اینترفیس‌های مجزا تعریف کنیم و
+`SmsOnlyNotifier` فقط اینترفیس مربوط به SMS را پیاده‌سازی کند.
+**دلیل انتخاب:** این کار مستقیماً به حل ISP هم کمک می‌کند و از پرتاب استثنا
+برای متدهای «پشتیبانی‌نشده» جلوگیری می‌کند.
+
+---
+
+### ISP (Interface Segregation Principle)
+**رعایت شده؟** خیر
+**محل در پروژه:** `notification.py` → کلاس `NotificationService`
+**توضیح:** این کلاس یک اینترفیس/کانترکت «فربه» دارد (email + sms + push با
+هم). کلاینت‌هایی که فقط به یک کانال نیاز دارند (مثل `SmsOnlyNotifier`)
+مجبورند به متدهایی وابسته باشند که نمی‌خواهند و نمی‌توانند پیاده کنند.
+
+**علت نقض:** یک اینترفیس بزرگ به‌جای چند اینترفیس کوچک و تخصصی.
+**روش اصلاح:** تفکیک `NotificationService` به اینترفیس‌های کوچک‌تر مثل
+`EmailNotifier`, `SmsNotifier`, `PushNotifier`، و ترکیب آن‌ها فقط در جایی که
+واقعاً نیاز است (مثلاً یک `MultiChannelNotifier` که همه را دارد).
+**دلیل انتخاب:** این کار باعث می‌شود کلاس‌هایی مثل `SmsOnlyNotifier` فقط به
+همان اینترفیسی وابسته باشند که واقعاً استفاده می‌کنند، بدون نیاز به override
+کردن متدهای اضافی با استثنا.
+
+### نحوه تقسیم‌کار در تحلیل SOLID
+برای تحلیل موازی، هر یک از اعضای گروه سه/دو اصل را جداگانه روی یک برنچ
+مجزا بررسی کردند:
+- سارا: تحلیل SRP، OCP، DIP (روی برنچ analysis/solid-srp-ocp-dip)
+- زهرا : تحلیل LSP، ISP (روی برنچ analysis/solid-lsp-isp)
+
+سپس دو برنچ در feature/analyze-code merge شدند و نتیجه‌ی نهایی در جدول
+زیر یکپارچه شد.
+
+
+## گام ۳: طراحی Skill برای OpenCode
+
+یک Skill سفارشی به نام `solid-checker` در مسیر
+`.opencode/skills/solid-checker/SKILL.md` طراحی و اضافه شد.
+
+### هدف Skill
+شناسایی نقض هر یک از پنج اصل SOLID در کد پایتون پروژه، ارائه‌ی دلیل مبتنی
+بر کد واقعی برای هر نقض، پیشنهاد یک راهکار Refactoring مشخص، و اعمال
+تغییرات فقط پس از تایید صریح کاربر.
+
+### اطلاعاتی که در اختیار Agent قرار می‌گیرد
+- معیارهای دقیق تشخیص هر یک از ۵ اصل (SRP, OCP, LSP, ISP, DIP) به‌صورت
+  پرسش‌های راهنما
+- یک قالب خروجی ثابت (اصل / محل / علت / راهکار پیشنهادی) برای یکدست بودن
+  گزارش‌ها
+- قید صریح: هرگز بدون تایید کاربر تغییری اعمال نشود
+
+### چرا این ساختار انتخاب شد
+استفاده از فرمت رسمی Skill در OpenCode (`SKILL.md` با YAML frontmatter شامل
+`name` و `description`) به‌جای پرامپت یک‌بارمصرف، باعث می‌شود این تحلیل در
+هر session جدید و برای پروژه‌های مشابه قابل استفاده‌ی مجدد باشد.
+
+### مشکل فنی حین ساخت (و رفع آن)
+هنگام ساخت اولیه‌ی فایل با ویرایشگر متن، یک کاراکتر بک‌اسلش اضافه قبل از
+خط `---` ابتدای فایل درج شده بود که باعث می‌شد OpenCode نتواند YAML
+frontmatter را تشخیص دهد (پیام: "There's no solid-checker skill
+installed"). با بازنویسی فایل به‌صورت UTF-8 بدون BOM از طریق PowerShell،
+مشکل رفع و Skill به‌درستی شناسایی شد.
+
+### خروجی Skill روی پروژه
+Skill با موفقیت تمام ۵ نقض شناسایی‌شده در گام ۲ را تشخیص داد، و حتی یک
+مورد اضافه یافت: نقض OCP در `pricing.py` (زنجیره if/elif در
+`DiscountCalculator.calculate()`) که در تحلیل دستی گام ۲ ذکر نشده بود.
+
+![بررسی در دسترس بودن Skill](docs/screenshots/step3-skill-available.png)
+![تحلیل SOLID توسط Skill](docs/screenshots/step3-skill-output.png)
+![تحلیل SOLID توسط Skill](docs/screenshots/step3-skill-output2.png)
+### نکته‌ی ارزیابی
+در خروجی، عبارت ویتنامی «trách nhiệm» به‌جای کلمه‌ی «مسئولیت» درج شده بود —
+نمونه‌ای از خطای زبانی مدل رایگان (Nemotron 3 Ultra Free) که نیاز به بازبینی
+انسانی داشت.
+
+
+## گام ۴: تولید برنامه‌ی اصلاح (Plan Mode)
+
+با استفاده از حالت Plan در OpenCode (به همراه Skill `solid-checker`)، یک
+برنامه‌ی کامل Refactoring برای اصلاح هر ۵ نقض شناسایی‌شده در گام ۲ تولید شد.
+
+### مشکلی که در Plan اولیه پیدا و اصلاح شد
+Plan اولیه‌ی پیشنهادی یک خطای فنی داشت: برای هر ماژول (payment, pricing,
+notification, storage) هم‌زمان یک فایل facade (مثلاً `payment.py`) و یک
+پوشه با همان نام (`payment/`) پیشنهاد داده بود. در سیستم فایل نمی‌توان
+هم‌زمان یک فایل و یک پوشه با نام یکسان در یک مسیر داشت. این تناقض قبل از
+اجرا شناسایی و به Agent بازخورد داده شد؛ Plan اصلاح‌شده پوشه‌های جدید را
+با نام‌های غیرمتداخل (`payment_strategies/`, `pricing_rules/`,
+`notifiers/`, `repositories/`) بازسازی کرد.
+
+### ساختار نهایی برنامه (پس از اصلاح)
+
+| مرحله | عمل | مسیرها | اصل مرتبط |
+|---|---|---|---|
+| ۱ | ایجاد لایه‌ی انتزاعی | `store/interfaces.py` | پیش‌نیاز DIP و ISP |
+| ۲ | Refactor پرداخت (Strategy Pattern) | `store/payment_strategies/` + `store/payment.py` (facade) | OCP |
+| ۳ | Refactor تخفیف (Strategy Pattern) | `store/pricing_rules/` + `store/pricing.py` (facade) | OCP |
+| ۴ | تفکیک اعلان‌رسانی | `store/notifiers/` + `store/notification.py` (facade) | LSP, ISP |
+| ۵ | تفکیک ذخیره‌سازی | `store/repositories/` + `store/storage.py` (facade) | DIP |
+| ۶ | تفکیک OrderService | `store/services/` (جایگزین `order_service.py`) | SRP |
+| ۷ | Dependency Injection نهایی | `store/container.py` + `store/main.py` | Wire-up کلی |
+
+### راهبرد کلی
+تمام فایل‌های facade موجود (`payment.py`, `pricing.py`, `notification.py`,
+`storage.py`) حفظ می‌شوند تا سازگاری با `main.py` قدیمی حفظ شود، اما بدنه‌ی
+داخلی آن‌ها به پیاده‌سازی‌های جدید (Strategy/Repository) اشاره می‌کند.
+
+### تصمیم تیم
+این برنامه پس از بررسی، تایید شد و اجرای آن (حالت Build) در گام ۵ آغاز
+می‌شود.
+
+
+
+## گام ۵: اعمال اصلاحات (Build Mode)
+
+### مرحله ۱ از ۷: ایجاد interfaces.py
+فایل `store/interfaces.py` با تعریف تمام Abstract Base Class های لازم
+(برای Payment, Pricing, Notification, Storage, و اجزای SRP) ایجاد شد.
+
+**خطای شناسایی‌شده و اصلاح‌شده:** در پیش‌نویس اولیه، کلاس
+`INotificationService` دو بار با امضای متفاوت تعریف شده بود (یک‌بار با
+متد `notify`، یک‌بار با `send_confirmation`) که در پایتون باعث می‌شد
+تعریف دوم بی‌سروصدا اولی را override کند — یک باگ پنهان بالقوه. این مورد
+شناسایی و به Agent بازخورد داده شد؛ کلاس دوم به `IOrderNotificationService`
+تغییر نام یافت.
+
+### مرحله ۲ از ۷: Refactor پرداخت (رفع OCP)
+با استفاده از الگوی Strategy + Factory، منطق انتخاب روش پرداخت که پیش‌تر
+یک زنجیره if/elif در `PaymentProcessor.process()` بود، به ۴ کلاس استراتژی
+مجزا (`CreditCardPaymentStrategy`, `PayPalPaymentStrategy`,
+`BitcoinPaymentStrategy`, `CashPaymentStrategy`) و یک `PaymentStrategyFactory`
+مبتنی بر دیکشنری تبدیل شد. اکنون افزودن روش پرداخت جدید فقط نیازمند افزودن
+یک کلاس استراتژی و ثبت آن در Factory است، بدون نیاز به تغییر کد موجود —
+دقیقاً رفع نقض OCP.
+
+**نکته‌ی اصلاح‌شده:** در پیش‌نویس اولیه `payment.py`، سینتکس
+`X | None` (مخصوص Python 3.10+) استفاده شده بود که با سبک بقیه‌ی پروژه
+(`Optional[X]`) ناسازگار بود؛ برای یکدستی و سازگاری با نسخه‌های قدیمی‌تر
+پایتون به `Optional[PaymentStrategyFactory]` تغییر یافت.
+
+
+### مرحله ۳ از ۷: Refactor محاسبه‌ی تخفیف (رفع OCP)
+با الگوی Strategy + Composite، زنجیره‌ی if/elif در `DiscountCalculator.calculate()`
+به سه کلاس قانون مجزا (`VIPDiscountRule`, `BulkDiscountRule`,
+`CouponDiscountRule`) و یک کلاس ترکیب‌کننده تبدیل شد که قوانین را به‌ترتیب
+اولویت بررسی می‌کند. اکنون افزودن قانون تخفیف جدید فقط نیازمند ساخت یک
+کلاس `IDiscountRule` جدید است، بدون تغییر کد موجود.
+
+**نکته‌ی ارزیابی:** پس از این Refactor، دو کلاس هم‌نام (`DiscountCalculator`
+در `pricing_rules/calculator.py` و در `pricing.py` facade) در پروژه وجود
+دارد که در فایل facade با نام مستعار import شده تا تداخل نداشته باشد. این
+به‌عنوان یک بدهی فنی جزئی شناسایی شد اما چون رفتار فعلی صحیح است و تغییر
+نام‌گذاری خارج از محدوده‌ی این آزمایش است، اصلاح نشد.
+
+
+### مرحله ۴ از ۷: تفکیک اعلان‌رسانی (رفع LSP و ISP)
+کلاس `SmsOnlyNotifier` که با پرتاب `NotImplementedError` در متدهای
+ارث‌بری‌شده اصل LSP را نقض می‌کرد، کاملاً حذف شد. به‌جای آن، سه اینترفیس
+مجزا (`IEmailNotifier`, `ISmsNotifier`, `IPushNotifier`) و پیاده‌سازی‌های
+مربوطه (`EmailNotifier`, `SmsNotifier`, `PushNotifier`) ساخته شد. یک
+`CompositeNotifier` این کانال‌ها را ترکیب می‌کند و هرکدام که مقدار `None`
+باشند، به‌سادگی نادیده گرفته می‌شوند — بدون نیاز به پرتاب استثنا.
+
+**نکته‌ی اصلاح‌شده:** در پیش‌نویس اولیه، متد `add_notifier` در
+`CompositeNotifier` بدنه‌ی خالی (`pass`) داشت و کد مرده و گمراه‌کننده بود؛
+چون خارج از قرارداد `INotificationService` هم بود، کامل حذف شد.
+
+### مرحله ۵ از ۷: تفکیک ذخیره‌سازی (رفع DIP)
+با الگوی Repository، وابستگی مستقیم به `MySqlDatabase` concrete به یک
+اینترفیس مشترک (`IOrderRepository` در `interfaces.py`) تبدیل شد.
+`InMemoryRepository` پیاده‌سازی پایه است و `MySqlRepository` از آن ارث
+می‌برد (فعلاً شبیه‌سازی‌شده، با یادداشت TODO برای اتصال واقعی به MySQL در
+آینده). `MySqlDatabase` در `storage.py` به‌عنوان facade، رفتار قدیمی
+(`save_order`, `load_order`) را حفظ کرده است.
+
+**مشکلات شناسایی و اصلاح‌شده در این مرحله:**
+1. در پیش‌نویس اول، فایل `storage.py` از تایپ `Order` بدون import آن
+   استفاده کرده بود که باعث خطای `NameError` هنگام اجرا می‌شد.
+2. یک کلاس پایه‌ی بی‌استفاده (`OrderRepository` با بدنه‌ی خالی) در
+   `repository.py` ساخته شده بود که کد مرده بود و حذف شد.
+3. `MySqlRepository` و `InMemoryRepository` ابتدا کد کاملاً تکراری داشتند؛
+   با ارث‌بری `MySqlRepository` از `InMemoryRepository`، تکرار رفع شد.
+4. در اصلاح اولیه‌ی مشکل ۲، Agent به‌اشتباه یک کلاس `IOrderRepository`
+   **دوم** (متفاوت از نسخه‌ی موجود در `interfaces.py`) ساخته بود که باعث
+   می‌شد دو قرارداد ناسازگار هم‌نام در پروژه وجود داشته باشد. این تناقض
+   شناسایی شد و رفع گردید تا فقط یک `IOrderRepository` واحد باقی بماند.
+
+
+
+### مرحله ۶ از ۷: تفکیک OrderService (رفع SRP)
+کلاس `OrderService` که ۶ مسئولیت مجزا داشت، به ۶ سرویس تخصصی و یک
+`OrderOrchestrator` تفکیک شد: `OrderValidator`, `PricingService`,
+`PaymentService`, `OrderPersistenceService`, `OrderNotificationService`,
+`ReceiptPrinter`. تمام این سرویس‌ها از طریق Constructor Injection به
+`OrderOrchestrator` تزریق می‌شوند که فقط نقش هماهنگ‌کننده را ایفا می‌کند.
+
+**تصمیم معماری کلیدی:** برای انتقال یکپارچه‌ی جزئیات قیمت‌گذاری
+(subtotal, discount, shipping, total) بین `PricingService` و
+`ReceiptPrinter` بدون افزایش تعداد پارامترها، یک dataclass جدید
+`PricingBreakdown` در `models.py` تعریف شد و امضای `IPricingService` و
+`IReceiptPrinter` بر اساس آن هماهنگ گردید.
+
+توجه: `store/main.py` هنوز به `OrderService` قدیمی وابسته است و در
+مرحله‌ی ۷ (Dependency Injection Container) به‌روزرسانی خواهد شد.
+
+### مرحله ۷ از ۷: Dependency Injection Container و اتصال نهایی
+یک `Container` مرکزی در `store/container.py` ساخته شد که تمام سرویس‌ها و
+وابستگی‌هایشان را یک‌بار می‌سازد و به `OrderOrchestrator` تزریق می‌کند.
+`main.py` به‌روزرسانی شد تا از `Container().orchestrator` استفاده کند.
+فایل قدیمی `store/order_service.py` حذف شد.
+
+**مشکل شناسایی و اصلاح‌شده:** در پیش‌نویس اول `Container`، چندین وابستگی
+(`EmailNotifier`, `SmsNotifier`, `PushNotifier`, `CompositeNotifier`,
+`MySqlDatabase` مستقل) ساخته شده بودند که هیچ‌کدام واقعاً در
+`OrderOrchestrator` استفاده نمی‌شدند — کد مرده و گمراه‌کننده. این وابستگی‌ها
+حذف و به‌جایش یک instance مشترک از `CompositeNotifier` و `MySqlRepository`
+تزریق شد تا `notification_service` و `database` (که به‌عنوان property
+عمومی برای تست در دسترس‌اند) دقیقاً همان چیزی باشند که orchestrator هم
+استفاده می‌کند.
+
+### تست نهایی: تایید عدم تغییر رفتار
+اجرای `python -m store.main` روی نسخه‌ی کاملاً Refactor شده، خروجی‌ای
+دقیقاً یکسان با نسخه‌ی اصلی (`01-OOD-Principles-Without`) تولید کرد —
+شامل محاسبه‌ی تخفیف، shipping، و هر ۴ روش پرداخت (از جمله cash). این
+تایید می‌کند که Refactoring رفتار بیرونی برنامه را حفظ کرده است.
