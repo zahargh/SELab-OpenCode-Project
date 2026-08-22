@@ -196,3 +196,97 @@ notification, storage) هم‌زمان یک فایل facade (مثلاً `payment
 ### تصمیم تیم
 این برنامه پس از بررسی، تایید شد و اجرای آن (حالت Build) در گام ۵ آغاز
 می‌شود.
+
+
+
+## گام ۵: اعمال اصلاحات (Build Mode)
+
+### مرحله ۱ از ۷: ایجاد interfaces.py
+فایل `store/interfaces.py` با تعریف تمام Abstract Base Class های لازم
+(برای Payment, Pricing, Notification, Storage, و اجزای SRP) ایجاد شد.
+
+**خطای شناسایی‌شده و اصلاح‌شده:** در پیش‌نویس اولیه، کلاس
+`INotificationService` دو بار با امضای متفاوت تعریف شده بود (یک‌بار با
+متد `notify`، یک‌بار با `send_confirmation`) که در پایتون باعث می‌شد
+تعریف دوم بی‌سروصدا اولی را override کند — یک باگ پنهان بالقوه. این مورد
+شناسایی و به Agent بازخورد داده شد؛ کلاس دوم به `IOrderNotificationService`
+تغییر نام یافت.
+
+### مرحله ۲ از ۷: Refactor پرداخت (رفع OCP)
+با استفاده از الگوی Strategy + Factory، منطق انتخاب روش پرداخت که پیش‌تر
+یک زنجیره if/elif در `PaymentProcessor.process()` بود، به ۴ کلاس استراتژی
+مجزا (`CreditCardPaymentStrategy`, `PayPalPaymentStrategy`,
+`BitcoinPaymentStrategy`, `CashPaymentStrategy`) و یک `PaymentStrategyFactory`
+مبتنی بر دیکشنری تبدیل شد. اکنون افزودن روش پرداخت جدید فقط نیازمند افزودن
+یک کلاس استراتژی و ثبت آن در Factory است، بدون نیاز به تغییر کد موجود —
+دقیقاً رفع نقض OCP.
+
+**نکته‌ی اصلاح‌شده:** در پیش‌نویس اولیه `payment.py`، سینتکس
+`X | None` (مخصوص Python 3.10+) استفاده شده بود که با سبک بقیه‌ی پروژه
+(`Optional[X]`) ناسازگار بود؛ برای یکدستی و سازگاری با نسخه‌های قدیمی‌تر
+پایتون به `Optional[PaymentStrategyFactory]` تغییر یافت.
+
+
+### مرحله ۳ از ۷: Refactor محاسبه‌ی تخفیف (رفع OCP)
+با الگوی Strategy + Composite، زنجیره‌ی if/elif در `DiscountCalculator.calculate()`
+به سه کلاس قانون مجزا (`VIPDiscountRule`, `BulkDiscountRule`,
+`CouponDiscountRule`) و یک کلاس ترکیب‌کننده تبدیل شد که قوانین را به‌ترتیب
+اولویت بررسی می‌کند. اکنون افزودن قانون تخفیف جدید فقط نیازمند ساخت یک
+کلاس `IDiscountRule` جدید است، بدون تغییر کد موجود.
+
+**نکته‌ی ارزیابی:** پس از این Refactor، دو کلاس هم‌نام (`DiscountCalculator`
+در `pricing_rules/calculator.py` و در `pricing.py` facade) در پروژه وجود
+دارد که در فایل facade با نام مستعار import شده تا تداخل نداشته باشد. این
+به‌عنوان یک بدهی فنی جزئی شناسایی شد اما چون رفتار فعلی صحیح است و تغییر
+نام‌گذاری خارج از محدوده‌ی این آزمایش است، اصلاح نشد.
+
+
+### مرحله ۴ از ۷: تفکیک اعلان‌رسانی (رفع LSP و ISP)
+کلاس `SmsOnlyNotifier` که با پرتاب `NotImplementedError` در متدهای
+ارث‌بری‌شده اصل LSP را نقض می‌کرد، کاملاً حذف شد. به‌جای آن، سه اینترفیس
+مجزا (`IEmailNotifier`, `ISmsNotifier`, `IPushNotifier`) و پیاده‌سازی‌های
+مربوطه (`EmailNotifier`, `SmsNotifier`, `PushNotifier`) ساخته شد. یک
+`CompositeNotifier` این کانال‌ها را ترکیب می‌کند و هرکدام که مقدار `None`
+باشند، به‌سادگی نادیده گرفته می‌شوند — بدون نیاز به پرتاب استثنا.
+
+**نکته‌ی اصلاح‌شده:** در پیش‌نویس اولیه، متد `add_notifier` در
+`CompositeNotifier` بدنه‌ی خالی (`pass`) داشت و کد مرده و گمراه‌کننده بود؛
+چون خارج از قرارداد `INotificationService` هم بود، کامل حذف شد.
+
+### مرحله ۵ از ۷: تفکیک ذخیره‌سازی (رفع DIP)
+با الگوی Repository، وابستگی مستقیم به `MySqlDatabase` concrete به یک
+اینترفیس مشترک (`IOrderRepository` در `interfaces.py`) تبدیل شد.
+`InMemoryRepository` پیاده‌سازی پایه است و `MySqlRepository` از آن ارث
+می‌برد (فعلاً شبیه‌سازی‌شده، با یادداشت TODO برای اتصال واقعی به MySQL در
+آینده). `MySqlDatabase` در `storage.py` به‌عنوان facade، رفتار قدیمی
+(`save_order`, `load_order`) را حفظ کرده است.
+
+**مشکلات شناسایی و اصلاح‌شده در این مرحله:**
+1. در پیش‌نویس اول، فایل `storage.py` از تایپ `Order` بدون import آن
+   استفاده کرده بود که باعث خطای `NameError` هنگام اجرا می‌شد.
+2. یک کلاس پایه‌ی بی‌استفاده (`OrderRepository` با بدنه‌ی خالی) در
+   `repository.py` ساخته شده بود که کد مرده بود و حذف شد.
+3. `MySqlRepository` و `InMemoryRepository` ابتدا کد کاملاً تکراری داشتند؛
+   با ارث‌بری `MySqlRepository` از `InMemoryRepository`، تکرار رفع شد.
+4. در اصلاح اولیه‌ی مشکل ۲، Agent به‌اشتباه یک کلاس `IOrderRepository`
+   **دوم** (متفاوت از نسخه‌ی موجود در `interfaces.py`) ساخته بود که باعث
+   می‌شد دو قرارداد ناسازگار هم‌نام در پروژه وجود داشته باشد. این تناقض
+   شناسایی شد و رفع گردید تا فقط یک `IOrderRepository` واحد باقی بماند.
+
+
+
+### مرحله ۶ از ۷: تفکیک OrderService (رفع SRP)
+کلاس `OrderService` که ۶ مسئولیت مجزا داشت، به ۶ سرویس تخصصی و یک
+`OrderOrchestrator` تفکیک شد: `OrderValidator`, `PricingService`,
+`PaymentService`, `OrderPersistenceService`, `OrderNotificationService`,
+`ReceiptPrinter`. تمام این سرویس‌ها از طریق Constructor Injection به
+`OrderOrchestrator` تزریق می‌شوند که فقط نقش هماهنگ‌کننده را ایفا می‌کند.
+
+**تصمیم معماری کلیدی:** برای انتقال یکپارچه‌ی جزئیات قیمت‌گذاری
+(subtotal, discount, shipping, total) بین `PricingService` و
+`ReceiptPrinter` بدون افزایش تعداد پارامترها، یک dataclass جدید
+`PricingBreakdown` در `models.py` تعریف شد و امضای `IPricingService` و
+`IReceiptPrinter` بر اساس آن هماهنگ گردید.
+
+توجه: `store/main.py` هنوز به `OrderService` قدیمی وابسته است و در
+مرحله‌ی ۷ (Dependency Injection Container) به‌روزرسانی خواهد شد.
